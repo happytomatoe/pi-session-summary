@@ -285,7 +285,6 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 
 	async function generateSummary(ctx: ExtensionContext) {
 		if (pendingLLMCall) return;
-		pendingLLMCall = true; // acquire lock immediately
 
 		const resolved = resolveModel(ctx);
 		if (!resolved) {
@@ -308,6 +307,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 		const sessionId = ctx.sessionManager.getSessionId();
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 		if (generation !== sessionGeneration) return;
+		if (pendingLLMCall) return; // re-check after await (race condition fix)
 		if (!auth?.ok || !auth.apiKey) {
 			lastError = "NO_API_KEY";
 			updateWidget(ctx);
@@ -349,7 +349,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 			].join("\n");
 		}
 
-			// lock already acquired at top of function
+			pendingLLMCall = true; // acquire lock just before LLM call
 
 			// Fire-and-forget: non-blocking async LLM call
 		complete(model, {
