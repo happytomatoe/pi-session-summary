@@ -523,11 +523,18 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
     description: "Clear the session summary/name",
     handler: async (_args, ctx) => {
       resetState();
-      lastSummary = "";
-      pi.setSessionName("");
+
+      const branch = ctx.sessionManager.getBranch();
+      const firstUser = branch.find(
+        (e) => e.type === "message" && e.message?.role === "user" && renderContent(e.message.content).trim(),
+      );
+      const firstText = firstUser ? renderContent(firstUser.message!.content).trim().split('\n')[0].slice(0, 80) : "";
+
+      lastSummary = firstText;
+      pi.setSessionName(firstText);
       latestCtx = ctx;
       updateWidget(ctx);
-      ctx.ui.notify("Summary cleared", "info");
+      ctx.ui.notify(firstText ? `Summary restored to first message` : "Summary cleared", "info");
     },
   });
 
