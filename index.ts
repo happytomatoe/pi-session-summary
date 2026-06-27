@@ -99,7 +99,7 @@ function renderContent(content: unknown): string {
 }
 
 /** Build a compact conversation string from session entries.
-*  Skips tool results except for a tiny marker. */
+ *  Skips tool results except for a tiny marker. */
 function buildConversation(entries: SessionEntry[]): string {
 	const lines: string[] = [];
 
@@ -136,10 +136,7 @@ function getCompactionSummary(entries: SessionEntry[]): string | undefined {
 			if (text) return text;
 		}
 		// Also check compaction entry type
-		if (
-			(e as any).type === "compaction" &&
-			typeof (e as any).summary === "string"
-		) {
+		if ((e as any).type === "compaction" && typeof (e as any).summary === "string") {
 			return (e as any).summary;
 		}
 	}
@@ -150,23 +147,17 @@ function getCompactionSummary(entries: SessionEntry[]): string | undefined {
 
 export default function sessionSummaryExtension(pi: ExtensionAPI) {
 	// -- State ------------------------------------------------------------
-	let config: SummaryConfig = { ...DEFAULTS }; // loaded from session-summary.json
-	let resolvedModelName = ""; // display name of the auto-detected or configured model
-	let totalCost = {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		total: 0,
-	};
+	let config: SummaryConfig = { ...DEFAULTS };  // loaded from session-summary.json
+	let resolvedModelName = "";  // display name of the auto-detected or configured model
+	let totalCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 	let totalTokens = { input: 0, output: 0 };
 	let llmCallCount = 0;
-	let lastSummary = ""; // last successful LLM-generated summary
+	let lastSummary = "";          // last successful LLM-generated summary
 	let lastSummaryConvTokens = 0; // token count of conversation when last summary was made
-	let turnsSinceSummary = 0; // agent_end calls since last summary update
-	let lastSummaryTime = 0; // Date.now() of last summary completion
-	let pendingLLMCall = false; // is an LLM call in flight?
-	let lastError = ""; // last error (code only)
+	let turnsSinceSummary = 0;     // agent_end calls since last summary update
+	let lastSummaryTime = 0;       // Date.now() of last summary completion
+	let pendingLLMCall = false;    // is an LLM call in flight?
+	let lastError = "";            // last error (code only)
 	let latestCtx: ExtensionContext | undefined; // most recent ctx for widget updates
 	let sessionGeneration = 0; // increment on session start/shutdown; ignores async work from stale session instances
 
@@ -197,9 +188,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 	// -- Model auto-detection ---------------------------------------------
 
 	/** Resolve the model to use: explicit config or auto-detect from available models. */
-	function resolveModel(
-		ctx: ExtensionContext,
-	): { provider: string; model: string } | undefined {
+	function resolveModel(ctx: ExtensionContext): { provider: string; model: string } | undefined {
 		if (config.provider && config.model) {
 			resolvedModelName = `${config.provider}/${config.model}`;
 			return { provider: config.provider, model: config.model };
@@ -238,12 +227,16 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 		if (compaction || lastSummary) {
 			if (compaction && lastSummary) {
 				// Truncate compaction to keep it short
-				const shortCompaction = compaction.length > 80 ? compaction.slice(0, 77) + "..." : compaction;
+				const shortCompaction = compaction.length > 80
+					? compaction.slice(0, 77) + "..."
+					: compaction;
 				parts.push(`${shortCompaction} | ${lastSummary}`);
 			} else if (lastSummary) {
 				parts.push(lastSummary);
 			} else if (compaction) {
-				const shortCompaction = compaction.length > 120 ? compaction.slice(0, 117) + "..." : compaction;
+				const shortCompaction = compaction.length > 120
+					? compaction.slice(0, 117) + "..."
+					: compaction;
 				parts.push(shortCompaction);
 			}
 		}
@@ -251,19 +244,9 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 		if (parts.length === 0 && turnsSinceSummary === 0) {
 			// Nothing to show yet — display waiting message with model info
 			if (resolvedModelName) {
-				ctx.ui.setWidget(
-					"session-summary",
-					[
-						`Waiting for first message (will use ${resolvedModelName} to summarize)`,
-					],
-					{ placement: "belowEditor" },
-				);
+				ctx.ui.setWidget("session-summary", [`Waiting for first message (will use ${resolvedModelName} to summarize)`], { placement: "belowEditor" });
 			} else if (lastError) {
-				ctx.ui.setWidget(
-					"session-summary",
-					[`[session-summary] ${lastError}`],
-					{ placement: "belowEditor" },
-				);
+				ctx.ui.setWidget("session-summary", [`[session-summary] ${lastError}`], { placement: "belowEditor" });
 			} else {
 				ctx.ui.setWidget("session-summary", undefined);
 			}
@@ -279,10 +262,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 				line = `[${turnsSinceSummary} turn${turnsSinceSummary > 1 ? "s" : ""} ago] ${line}`;
 			} else {
 				// No summary yet -- show turn count as the content
-				const turnsLabel =
-					turnsSinceSummary === 1
-						? "1 new turn"
-						: `${turnsSinceSummary} new turns`;
+				const turnsLabel = turnsSinceSummary === 1 ? "1 new turn" : `${turnsSinceSummary} new turns`;
 				line = line ? `${line} + ${turnsLabel}` : turnsLabel;
 			}
 		}
@@ -308,10 +288,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 
 		const resolved = resolveModel(ctx);
 		if (!resolved) {
-			lastError =
-				"No summary model available (tried: " +
-				AUTO_DETECT_MODELS.join(", ") +
-				")";
+			lastError = "No summary model available (tried: " + AUTO_DETECT_MODELS.join(", ") + ")";
 			updateWidget(ctx);
 			return;
 		}
@@ -350,9 +327,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 
 		// Decide: update previous summary or re-summarize from scratch
 		const tokensSinceLastSummary = convTokens - lastSummaryConvTokens;
-		const shouldResummarize =
-			!lastSummary ||
-			tokensSinceLastSummary >= config.resummarizeTokenThreshold;
+		const shouldResummarize = !lastSummary || tokensSinceLastSummary >= config.resummarizeTokenThreshold;
 
 		let prompt: string;
 		if (shouldResummarize) {
@@ -386,26 +361,19 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 		pendingLLMCall = true; // acquire lock just before LLM call
 
 		// Fire-and-forget: non-blocking async LLM call
-		complete(
-			model,
-			{
-				systemPrompt:
-					"You are a concise summarizer. Output a single line summary of a coding session.",
-				messages: [
-					{
-						role: "user" as const,
-						content: [{ type: "text" as const, text: prompt }],
-						timestamp: Date.now(),
-					},
-				],
-			},
-			{
-				apiKey: auth.apiKey,
-				headers: auth.headers,
-				maxTokens: config.maxTokens,
-				sessionId,
-			} as any,
-		)
+		complete(model, {
+			systemPrompt: "You are a concise summarizer. Output a single line summary of a coding session.",
+			messages: [{
+				role: "user" as const,
+				content: [{ type: "text" as const, text: prompt }],
+				timestamp: Date.now(),
+			}],
+		}, {
+			apiKey: auth.apiKey,
+			headers: auth.headers,
+			maxTokens: config.maxTokens,
+			sessionId,
+		} as any)
 			.then((response) => {
 				if (generation !== sessionGeneration) return;
 				// Track usage/cost
@@ -428,12 +396,11 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 					let code = errMsg;
 					try {
 						const parsed = JSON.parse(errMsg);
-						code =
-							parsed?.detail?.code ||
-							parsed?.error?.code ||
-							parsed?.error?.message ||
-							(typeof parsed?.detail === "string" ? parsed.detail : null) ||
-							errMsg;
+						code = parsed?.detail?.code
+							|| parsed?.error?.code
+							|| parsed?.error?.message
+							|| (typeof parsed?.detail === "string" ? parsed.detail : null)
+							|| errMsg;
 					} catch {}
 					lastError = String(code);
 					return; // don't update summary
@@ -492,10 +459,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 					provider: resolved?.provider ?? "",
 					model: resolved?.model ?? "",
 				};
-				writeFileSync(
-					globalPath,
-					JSON.stringify(settingsToWrite, null, 2) + "\n",
-				);
+				writeFileSync(globalPath, JSON.stringify(settingsToWrite, null, 2) + "\n");
 				ctx.ui.notify(`Created ${globalPath}`, "success");
 			} else {
 				ctx.ui.notify(`Settings file already exists: ${globalPath}`, "info");
@@ -548,8 +512,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 			// Ensure model is resolved fresh
 			if (!resolvedModelName) resolveModel(ctx);
 			const model = resolvedModelName || "(none)";
-			const costStr =
-				totalCost.total > 0 ? `$${totalCost.total.toFixed(4)}` : "$0";
+			const costStr = totalCost.total > 0 ? `$${totalCost.total.toFixed(4)}` : "$0";
 			const line = `${model} | ${llmCallCount} calls | tokens: ${totalTokens.input}→${totalTokens.output} | cost: ${costStr} (in: $${totalCost.input.toFixed(4)}, out: $${totalCost.output.toFixed(4)}, cache-r: $${totalCost.cacheRead.toFixed(4)}, cache-w: $${totalCost.cacheWrite.toFixed(4)})`;
 			ctx.ui.notify(line, "info");
 		},
@@ -572,10 +535,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 		// Resolve model early so waiting message shows model name
 		const resolved = resolveModel(ctx);
 		if (!resolved) {
-			lastError =
-				"No summary model available (tried: " +
-				AUTO_DETECT_MODELS.join(", ") +
-				")";
+			lastError = "No summary model available (tried: " + AUTO_DETECT_MODELS.join(", ") + ")";
 		}
 
 		restoreFromSessionName();
