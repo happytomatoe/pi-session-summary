@@ -1,10 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { complete } from "@mariozechner/pi-ai";
-import type {
-	ExtensionAPI,
-	ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 
 // -- Configuration --------------------------------------------------------
@@ -48,9 +45,7 @@ function loadConfig(cwd: string): SummaryConfig {
 				const parsed = JSON.parse(content);
 				config = { ...config, ...parsed };
 			} catch (err) {
-				console.error(
-					`[session-summary] Failed to load config from ${path}: ${err}`,
-				);
+				console.error(`[session-summary] Failed to load config from ${path}: ${err}`);
 			}
 		}
 	}
@@ -243,16 +238,12 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 		if (compaction || lastSummary) {
 			if (compaction && lastSummary) {
 				// Truncate compaction to keep it short
-				const shortCompaction =
-					compaction.length > 80 ? compaction.slice(0, 77) + "..." : compaction;
+				const shortCompaction = compaction.length > 80 ? compaction.slice(0, 77) + "..." : compaction;
 				parts.push(`${shortCompaction} | ${lastSummary}`);
 			} else if (lastSummary) {
 				parts.push(lastSummary);
 			} else if (compaction) {
-				const shortCompaction =
-					compaction.length > 120
-						? compaction.slice(0, 117) + "..."
-						: compaction;
+				const shortCompaction = compaction.length > 120 ? compaction.slice(0, 117) + "..." : compaction;
 				parts.push(shortCompaction);
 			}
 		}
