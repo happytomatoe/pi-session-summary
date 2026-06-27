@@ -159,6 +159,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 	let pendingLLMCall = false;    // is an LLM call in flight?
 	let lastError = "";            // last error (code only)
 	let latestCtx: ExtensionContext | undefined; // most recent ctx for widget updates
+	let sessionGeneration = 0; // increment on session start/shutdown; ignores async work from stale session instances
 
 	// -- Persist + session name helpers -----------------------------------
 
@@ -299,16 +300,28 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 			return;
 		}
 
-		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+		const generation = sessionGeneration;
+		const branch = ctx.sessionManager.getBranch();
+		const conversation = buildConversation(branch);
+		const convTokens = estimateTokens(conversation);
+		const sessionId = ctx.sessionManager.getSessionId();
+		
+		let auth;
+		try {
+			auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+		} catch (err) {
+			lastError = `AUTH_ERROR: ${err instanceof Error ? err.message : String(err)}`;
+			updateWidget(ctx);
+			return;
+		}
+
+		if (generation !== sessionGeneration) return;
+		if (pendingLLMCall) return; // re-check after await (race condition fix)
 		if (!auth?.ok || !auth.apiKey) {
 			lastError = "NO_API_KEY";
 			updateWidget(ctx);
 			return;
 		}
-
-		const branch = ctx.sessionManager.getBranch();
-		const conversation = buildConversation(branch);
-		const convTokens = estimateTokens(conversation);
 
 		if (!conversation.trim()) return;
 
@@ -345,7 +358,7 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 			].join("\n");
 		}
 
-		pendingLLMCall = true;
+		pendingLLMCall = true; // acquire lock just before LLM call
 
 		// Fire-and-forget: non-blocking async LLM call
 		complete(model, {
@@ -359,21 +372,23 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 			apiKey: auth.apiKey,
 			headers: auth.headers,
 			maxTokens: config.maxTokens,
+			sessionId,
 		} as any)
 			.then((response) => {
-			// Track usage/cost
-			if (response.usage) {
-				totalTokens.input += response.usage.input;
-				totalTokens.output += response.usage.output;
-				if (response.usage.cost) {
-					totalCost.input += response.usage.cost.input;
-					totalCost.output += response.usage.cost.output;
-					totalCost.cacheRead += response.usage.cost.cacheRead;
-					totalCost.cacheWrite += response.usage.cost.cacheWrite;
-					totalCost.total += response.usage.cost.total;
+				if (generation !== sessionGeneration) return;
+				// Track usage/cost
+				if (response.usage) {
+					totalTokens.input += response.usage.input;
+					totalTokens.output += response.usage.output;
+					if (response.usage.cost) {
+						totalCost.input += response.usage.cost.input;
+						totalCost.output += response.usage.cost.output;
+						totalCost.cacheRead += response.usage.cost.cacheRead;
+						totalCost.cacheWrite += response.usage.cost.cacheWrite;
+						totalCost.total += response.usage.cost.total;
+					}
 				}
-			}
-			llmCallCount++;
+				llmCallCount++;
 				// Handle provider-level errors (e.g. codex "invalid_workspace_selected")
 				if (response.stopReason === "error") {
 					const errMsg = response.errorMessage || "unknown provider error";
@@ -416,12 +431,14 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 				}
 			})
 			.catch((err) => {
+				if (generation !== sessionGeneration) return;
 				const msg = err?.message || String(err);
 				// err.name is usually just "Error" -- useless; prefer code/status/message
 				const code = err?.code || err?.status || msg.slice(0, 80);
 				lastError = String(code);
 			})
 			.finally(() => {
+				if (generation !== sessionGeneration) return;
 				pendingLLMCall = false;
 				if (latestCtx) updateWidget(latestCtx);
 			});
@@ -467,14 +484,25 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("summary:clear", {
-		description: "Clear the session summary/name",
+		description: "Reset the session summary/name to the first user message",
 		handler: async (_args, ctx) => {
+			sessionGeneration++;
 			resetState();
-			lastSummary = "";
-			pi.setSessionName("");
+
+			const branch = ctx.sessionManager.getBranch();
+			const firstUser = branch.find(
+				(e) => e.type === "message" && e.message?.role === "user" && renderContent(e.message.content).trim()
+			);
+
+			const firstText = firstUser 
+				? renderContent(firstUser.message!.content).trim().split('\n')[0].slice(0, 80) 
+				: "";
+
+			lastSummary = firstText;
+			pi.setSessionName(firstText);
 			latestCtx = ctx;
 			updateWidget(ctx);
-			ctx.ui.notify("Summary cleared", "info");
+			ctx.ui.notify(firstText ? `Summary restored to first message` : "Summary cleared", "info");
 		},
 	});
 
@@ -492,7 +520,13 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 
 	// -- Event handlers ---------------------------------------------------
 
+	pi.on("session_shutdown", async () => {
+		sessionGeneration++;
+		latestCtx = undefined;
+	});
+
 	pi.on("session_start", async (_event, ctx) => {
+		sessionGeneration++;
 		// Reload config (picks up changes on /reload)
 		config = loadConfig(ctx.cwd);
 		resetState();
@@ -524,6 +558,4 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
 		// Generate summary asynchronously (non-blocking)
 		generateSummary(ctx);
 	});
-
-
 }
