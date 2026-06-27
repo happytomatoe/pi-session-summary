@@ -337,7 +337,16 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
     const conversation = buildConversation(branch);
     const convTokens = estimateTokens(conversation);
     const sessionId = ctx.sessionManager.getSessionId();
-    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    
+    let auth;
+    try {
+      auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    } catch (err) {
+      lastError = `AUTH_ERROR: ${err instanceof Error ? err.message : String(err)}`;
+      updateWidget(ctx);
+      return;
+    }
+
     if (generation !== sessionGeneration) return;
     if (pendingLLMCall) return; // re-check after await (race condition fix)
     if (!auth?.ok || !auth.apiKey) {
@@ -520,12 +529,12 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("summary:clear", {
-    description: "Clear the session summary/name",
+    description: "Reset the session summary/name to the first user message",
     handler: async (_args, ctx) => {
+      sessionGeneration++;
       resetState();
 
       const branch = ctx.sessionManager.getBranch();
-      
       const firstUser = branch.find(
         (e) => e.type === "message" && e.message?.role === "user" && renderContent(e.message.content).trim()
       );
