@@ -525,10 +525,14 @@ export default function sessionSummaryExtension(pi: ExtensionAPI) {
       resetState();
 
       const branch = ctx.sessionManager.getBranch();
+      
       const firstUser = branch.find(
-        (e) => e.type === "message" && e.message?.role === "user" && renderContent(e.message.content).trim(),
+        (e) => e.type === "message" && e.message?.role === "user" && renderContent(e.message.content).trim()
       );
-      const firstText = firstUser ? renderContent(firstUser.message!.content).trim().split('\n')[0].slice(0, 80) : "";
+
+      const firstText = firstUser 
+        ? renderContent(firstUser.message!.content).trim().split('\n')[0].slice(0, 80) 
+        : "";
 
       lastSummary = firstText;
       pi.setSessionName(firstText);
